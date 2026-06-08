@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
 from dataclasses import replace
 
 import pandas as pd
@@ -17,6 +18,106 @@ st.set_page_config(
     page_icon="📊",
     layout="wide",
 )
+
+
+def short_product_name(title: str) -> str:
+    title_lower = title.lower()
+    names = [
+        ("gum arabic", "Gum Arabic"),
+        ("frereana", "Frereana Resin"),
+        ("hydrosol", "Hydrosol Spray"),
+        ("hotel diffuser", "Hotel Diffuser Oil"),
+        ("hair growth", "Hair Growth Oil"),
+        ("skin regenerative", "Skin Oil"),
+        ("essential oil", "Essential Oil"),
+        ("carterii", "Carterii Resin"),
+    ]
+    for keyword, name in names:
+        if keyword in title_lower:
+            return name
+    return title[:36]
+
+
+def product_performance_table(product_df: pd.DataFrame, totals: dict[str, float]) -> str:
+    rows = []
+    for _, product in product_df.iterrows():
+        rows.append(
+            "<tr>"
+            f"<td>{html.escape(short_product_name(str(product['Title'])))}</td>"
+            f"<td class='number'>{int(product['Units Ordered']):,}</td>"
+            f"<td class='number'>${product['Ordered Product Sales']:,.2f}</td>"
+            f"<td class='number'>{product['Sales Share']:.1%}</td>"
+            f"<td class='number'>{product['Conversion']:.1%}</td>"
+            "</tr>"
+        )
+    rows.append(
+        "<tr class='total-row'>"
+        "<td>Total / Overall</td>"
+        f"<td class='number'>{totals['units']:,}</td>"
+        f"<td class='number'>${totals['sales']:,.2f}</td>"
+        "<td class='number'>100.0%</td>"
+        f"<td class='number'>{totals['conversion']:.1%}</td>"
+        "</tr>"
+    )
+    return """
+    <style>
+    .performance-wrap {
+        border-bottom: 4px solid #3276a8;
+        margin-top: 0.5rem;
+        overflow-x: auto;
+    }
+    .performance-title {
+        background: #3b79a6;
+        color: white;
+        font-size: 0.95rem;
+        font-weight: 700;
+        padding: 0.45rem 0.55rem;
+    }
+    table.performance {
+        border-collapse: collapse;
+        color: #263444;
+        font-size: 0.88rem;
+        width: 100%;
+    }
+    table.performance th {
+        background: #1e3852;
+        color: white;
+        font-weight: 700;
+        padding: 0.42rem 0.5rem;
+        text-align: left;
+        white-space: nowrap;
+    }
+    table.performance td {
+        border: 1px solid #d1dce6;
+        padding: 0.34rem 0.5rem;
+    }
+    table.performance tr:nth-child(even) td {
+        background: #f1f4f7;
+    }
+    table.performance .number {
+        text-align: right;
+        white-space: nowrap;
+    }
+    table.performance .total-row td {
+        background: #e8edf3 !important;
+        font-weight: 700;
+    }
+    </style>
+    <div class="performance-wrap">
+      <div class="performance-title">PRODUCT PERFORMANCE</div>
+      <table class="performance">
+        <thead>
+          <tr>
+            <th>Product</th><th>Units</th><th>Sales</th>
+            <th>Sales Share</th><th>Conversion</th>
+          </tr>
+        </thead>
+        <tbody>
+    """ + "".join(rows) + """
+        </tbody>
+      </table>
+    </div>
+    """
 
 
 def check_password() -> bool:
@@ -160,38 +261,9 @@ with tab_summary:
         )
 
 with tab_products:
-    display = product_df[
-        [
-            "(Child) ASIN",
-            "Title",
-            "Sessions - Total",
-            "Units Ordered",
-            "Ordered Product Sales",
-            "Sales Share",
-            "Conversion",
-            "Avg. Sale / Unit",
-            "Revenue / Session",
-        ]
-    ].rename(
-        columns={
-            "(Child) ASIN": "ASIN",
-            "Title": "Product",
-            "Sessions - Total": "Sessions",
-            "Units Ordered": "Units",
-            "Ordered Product Sales": "Sales",
-        }
-    )
-    st.dataframe(
-        display,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Sales": st.column_config.NumberColumn(format="$%.2f"),
-            "Sales Share": st.column_config.ProgressColumn(format="%.1%%", min_value=0, max_value=1),
-            "Conversion": st.column_config.NumberColumn(format="%.1%%"),
-            "Avg. Sale / Unit": st.column_config.NumberColumn(format="$%.2f"),
-            "Revenue / Session": st.column_config.NumberColumn(format="$%.2f"),
-        },
+    st.markdown(
+        product_performance_table(product_df, totals),
+        unsafe_allow_html=True,
     )
 
 with tab_finance:
