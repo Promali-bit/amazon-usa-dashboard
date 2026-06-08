@@ -120,6 +120,85 @@ def product_performance_table(product_df: pd.DataFrame, totals: dict[str, float]
     """
 
 
+def financial_overview_table(statement) -> str:
+    gross = statement.fba_product_sales
+
+    def pct(value: float) -> str:
+        return f"{abs(value / gross):.1%}" if gross else "-"
+
+    rows = [
+        (
+            "Gross FBA product sales",
+            statement.fba_product_sales,
+            pct(statement.fba_product_sales),
+            "Product refunds",
+            statement.product_refunds,
+            pct(statement.product_refunds),
+        ),
+        (
+            "Net income after refunds/credits",
+            statement.income,
+            pct(statement.income),
+            "Amazon advertising",
+            statement.advertising,
+            pct(statement.advertising),
+        ),
+        (
+            "Amazon fees and other expenses",
+            statement.expenses,
+            pct(statement.expenses),
+            "FBA selling fees",
+            statement.selling_fees,
+            pct(statement.selling_fees),
+        ),
+        (
+            "Net proceeds before transfers",
+            statement.net_before_transfers,
+            pct(statement.net_before_transfers),
+            "FBA transaction fees",
+            statement.transaction_fees,
+            pct(statement.transaction_fees),
+        ),
+        (
+            "Proceeds remaining after transfers",
+            statement.remaining_after_transfers,
+            pct(statement.remaining_after_transfers),
+            "Bank transfers",
+            statement.transfers,
+            pct(statement.transfers),
+        ),
+    ]
+    body = []
+    for left_label, left_amount, left_pct, right_label, right_amount, right_pct in rows:
+        body.append(
+            "<tr>"
+            f"<td>{left_label}</td><td class='number'>{money_html(left_amount)}</td>"
+            f"<td class='number'>{left_pct}</td>"
+            f"<td>{right_label}</td><td class='number'>{money_html(right_amount)}</td>"
+            f"<td class='number'>{right_pct}</td>"
+            "</tr>"
+        )
+    return """
+    <div class="summary-table-wrap">
+      <div class="section-title">FINANCIAL OVERVIEW</div>
+      <table class="summary-table">
+        <thead><tr>
+          <th>Metric</th><th>Amount</th><th>% of Gross Sales</th>
+          <th>Metric</th><th>Amount</th><th>% of Gross Sales</th>
+        </tr></thead>
+        <tbody>
+    """ + "".join(body) + """
+        </tbody>
+      </table>
+    </div>
+    """
+
+
+def money_html(value: float) -> str:
+    formatted = f"${abs(value):,.2f}"
+    return f"<span class='negative'>({formatted})</span>" if value < 0 else formatted
+
+
 def check_password() -> bool:
     if st.session_state.get("authenticated"):
         return True
@@ -208,7 +287,57 @@ totals = product_summary(product_df)
 difference = totals["sales"] - statement.fba_product_sales
 reconciled = abs(difference) <= 5
 
-st.subheader(statement.period)
+st.markdown(
+    """
+    <style>
+    .section-title {
+        background: #17365d;
+        color: white;
+        font-size: 0.95rem;
+        font-weight: 700;
+        padding: 0.45rem 0.55rem;
+    }
+    .summary-table-wrap {
+        border-bottom: 4px solid #3276a8;
+        margin: 0.5rem 0 1rem 0;
+        overflow-x: auto;
+    }
+    table.summary-table {
+        border-collapse: collapse;
+        color: #263444;
+        font-size: 0.85rem;
+        width: 100%;
+    }
+    table.summary-table th {
+        background: #d9eaf7;
+        color: #17365d;
+        font-weight: 700;
+        padding: 0.42rem 0.5rem;
+        text-align: left;
+        white-space: nowrap;
+    }
+    table.summary-table td {
+        border: 1px solid #c5d4e0;
+        padding: 0.38rem 0.5rem;
+    }
+    table.summary-table tr:nth-child(even) td {
+        background: #f4f7fa;
+    }
+    table.summary-table .number {
+        text-align: right;
+        white-space: nowrap;
+    }
+    .negative { color: #c00000; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.subheader(f"Amazon USA | {statement.period} Finance & Product Summary")
+st.caption(
+    "All amounts USD. Net proceeds exclude product costs, freight, payroll, "
+    "and external operating expenses."
+)
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("ASIN Report Sales", f"${totals['sales']:,.2f}")
 k2.metric("Units Ordered", f"{totals['units']:,}")
@@ -223,73 +352,57 @@ else:
         f"statement by ${difference:,.2f}. Check date filters, adjustments, and omitted ASINs."
     )
 
-tab_summary, tab_products, tab_finance = st.tabs(
-    ["Executive Summary", "Products by ASIN", "Financial Detail"]
-)
+st.markdown(financial_overview_table(statement), unsafe_allow_html=True)
 
-with tab_summary:
-    chart_col, insight_col = st.columns([1.5, 1])
-    with chart_col:
-        chart_df = product_df.head(12).copy()
-        chart_df["Product"] = chart_df["Title"].str.slice(0, 42)
-        fig = px.bar(
-            chart_df,
-            x="Product",
-            y="Ordered Product Sales",
-            title="Sales by Product",
-            labels={"Ordered Product Sales": "Sales (USD)"},
-        )
-        fig.update_layout(showlegend=False, xaxis_tickangle=-35)
-        st.plotly_chart(fig, use_container_width=True)
-    with insight_col:
-        top = product_df.iloc[0]
-        top_three_share = product_df.head(3)["Sales Share"].sum()
-        best_conversion = product_df.loc[product_df["Conversion"].idxmax()]
-        st.markdown("#### Management Takeaways")
-        st.write(
-            f"**{top['Title'][:55]}** generated **{top['Sales Share']:.1%}** of ASIN-report sales."
-        )
-        st.write(f"The top three ASINs generated **{top_three_share:.1%}** of sales.")
-        st.write(
-            f"Highest conversion: **{best_conversion['Title'][:55]}** at "
-            f"**{best_conversion['Conversion']:.1%}**, from "
-            f"**{best_conversion['Sessions - Total']:,} sessions**."
-        )
-        st.write(
-            f"Amazon fees and other expenses were **{statement.expense_rate:.1%}** "
-            "of gross FBA product sales."
-        )
-
-with tab_products:
+product_col, chart_col = st.columns([1.35, 1])
+with product_col:
     st.markdown(
         product_performance_table(product_df, totals),
         unsafe_allow_html=True,
     )
+with chart_col:
+    chart_df = product_df.copy()
+    chart_df["Product"] = chart_df["Title"].map(short_product_name)
+    fig = px.bar(
+        chart_df,
+        x="Product",
+        y="Ordered Product Sales",
+        title="Sales by Product",
+        labels={"Ordered Product Sales": "Sales (USD)"},
+    )
+    fig.update_traces(marker_color="#176889")
+    fig.update_layout(
+        showlegend=False,
+        xaxis_tickangle=-35,
+        height=max(380, 250 + len(chart_df) * 20),
+        margin=dict(l=20, r=20, t=55, b=80),
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-with tab_finance:
-    finance = pd.DataFrame(
+top = product_df.iloc[0]
+top_three_share = product_df.head(3)["Sales Share"].sum()
+best_conversion = product_df.loc[product_df["Conversion"].idxmax()]
+st.markdown('<div class="section-title">MANAGEMENT TAKEAWAYS</div>', unsafe_allow_html=True)
+st.markdown(
+    "\n".join(
         [
-            ["Gross FBA product sales", statement.fba_product_sales],
-            ["Net income after refunds/credits", statement.income],
-            ["Amazon fees and other expenses", statement.expenses],
-            ["Net proceeds before transfers", statement.net_before_transfers],
-            ["Transfers to bank", statement.transfers],
-            ["Remaining after transfers", statement.remaining_after_transfers],
-            ["ASIN report sales", totals["sales"]],
-            ["Reconciliation difference", difference],
-        ],
-        columns=["Metric", "Amount"],
+            f"- **{short_product_name(str(top['Title']))}** generated "
+            f"**{top['Sales Share']:.1%}** of ASIN-report sales; the top three products "
+            f"generated **{top_three_share:.1%}**.",
+            f"- **{short_product_name(str(best_conversion['Title']))}** had the highest "
+            f"conversion at **{best_conversion['Conversion']:.1%}**, from "
+            f"**{best_conversion['Sessions - Total']:,} sessions**.",
+            f"- Amazon fees and other expenses were **{statement.expense_rate:.1%}** "
+            "of gross FBA product sales.",
+            (
+                f"- Reports reconcile within the $5 tolerance; difference: **${difference:,.2f}**."
+                if reconciled
+                else f"- Reconciliation requires review; ASIN sales differ from the "
+                f"financial statement by **${difference:,.2f}**."
+            ),
+        ]
     )
-    st.dataframe(
-        finance,
-        use_container_width=True,
-        hide_index=True,
-        column_config={"Amount": st.column_config.NumberColumn(format="$%.2f")},
-    )
-    st.caption(
-        "Net proceeds are not business profit. Product costs, freight, payroll, "
-        "and expenses outside Amazon are not included."
-    )
+)
 
 excel_bytes = create_excel_report(product_df, statement)
 st.download_button(
